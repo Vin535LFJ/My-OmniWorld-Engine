@@ -1,0 +1,186 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(omniworld_runtime
+  VERSION 0.1.0
+  DESCRIPTION "OmniWorld Engine — GPU-native world engine (blank-slate rebuild in progress)"
+  LANGUAGES CXX)
+
+find_package(CUDAToolkit QUIET)
+
+# ---------------------------------------------------------------------------
+# Stage C C1: ONNX Runtime is an OPTIONAL dependency. Default OFF keeps the
+# reference build zero-external-dependency (the oracle invariant). When ON,
+# point OW_ONNXRUNTIME_ROOT at an unpacked onnxruntime-win-x64[-gpu]-*.zip;
+# only the real-model adapter files consume it (src/perception/rtdetr.cpp,
+# src/perception/depth_anything.cpp — stages C3/C4). Core modules never
+# include it. L1 sec 3 / L2 C1 sec 3.
+# ---------------------------------------------------------------------------
+option(OW_WITH_ONNXRUNTIME "Enable ONNX Runtime (performance path only)" OFF)
+if(OW_WITH_ONNXRUNTIME)
+  if(NOT DEFINED OW_ONNXRUNTIME_ROOT)
+    message(FATAL_ERROR "OW_WITH_ONNXRUNTIME needs OW_ONNXRUNTIME_ROOT (unzipped onnxruntime-win-x64*-*.zip)")
+  endif()
+  add_compile_definitions(OW_WITH_ONNXRUNTIME=1)
+else()
+  add_compile_definitions(OW_WITH_ONNXRUNTIME=0)
+endif()
+
+# Git commit into build (for the run-report environment metadata; "unknown"
+# when git is unavailable — never blank).
+execute_process(COMMAND git rev-parse --short HEAD
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  RESULT_VARIABLE OW_GIT_STATUS
+  OUTPUT_VARIABLE OW_GIT_HASH)
+if(NOT OW_GIT_HASH OR NOT OW_GIT_STATUS EQUAL 0)
+  set(OW_GIT_HASH "unknown")
+endif()
+add_compile_definitions(OW_GIT_COMMIT="${OW_GIT_HASH}")
+
+# ---------------------------------------------------------------------------
+# runtime_probe (retained from pre-rebuild): hardware capability probe + smoke
+# benchmark. Self-contained. The engine itself is being co-designed and
+# rebuilt blank-slate — see docs/design/ and ADR-0010. Old engine code lives
+# only in git history under tag `pre-rebuild`.
+# ---------------------------------------------------------------------------
+add_executable(runtime_probe
+  src/runtime_probe/main.cpp
+  src/runtime_probe/report.cpp
+  src/runtime_probe/cpu_probe.cpp
+  src/runtime_probe/cuda_probe.cpp
+  src/runtime_probe/vulkan_probe.cpp)
+
+set_target_properties(runtime_probe PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+
+target_compile_definitions(runtime_probe PRIVATE
+  OW_VERSION_STR="${PROJECT_VERSION}"
+  OW_BUILD_TYPE_STR="$<CONFIG>"
+  OW_CMAKE_VERSION_STR="${CMAKE_VERSION}")
+
+if(MSVC)
+  target_compile_options(runtime_probe PRIVATE /utf-8 /permissive- /W4)
+else()
+  target_compile_options(runtime_probe PRIVATE -Wall -Wextra)
+endif()
+
+if(CUDAToolkit_FOUND)
+  message(STATUS "CUDA toolkit ${CUDAToolkit_VERSION} at ${CUDAToolkit_LIBRARY_ROOT}")
+  target_link_libraries(runtime_probe PRIVATE CUDA::cudart)
+  target_compile_definitions(runtime_probe PRIVATE OW_HAS_CUDA=1)
+else()
+  message(WARNING "CUDAToolkit not found; runtime_probe reports CUDA as unavailable")
+endif()
+
+# ---------------------------------------------------------------------------
+# ow_core — engine core (stage A rebuild, slice by slice). OBJECT library:
+# self-registering adapters must not be dropped by the linker (pre-rebuild
+# lesson on MSVC).
+# ---------------------------------------------------------------------------
+add_library(ow_core OBJECT
+  src/world_state/world_state.cpp
+  src/truth_world/truth_world.cpp
+  src/truth_world/annotation.cpp
+  src/observation/observation.cpp
+  src/observation/frame_source.cpp
+  src/perception/registry.cpp
+  src/perception/blob_detect.cpp
+  src/perception/blob_detect_overconfident.cpp
+  src/adjudication/adjudication.cpp
+  src/belief/ledger.cpp
+  src/metrics/metrics.cpp
+  src/world_model/registry.cpp
+  src/world_model/zero_delta.cpp
+  src/world_model/linear_model.cpp
+  src/tolerance/tolerance.cpp
+  src/loop/driver.cpp)
+
+target_include_directories(ow_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(ow_core PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_compile_options(ow_core PUBLIC /utf-8 /permissive- /W4)
+else()
+  target_compile_options(ow_core PUBLIC -Wall -Wextra)
+endif()
+
+# ---------------------------------------------------------------------------
+# tests
+# ---------------------------------------------------------------------------
+add_executable(ow_tests tests/ow_tests.cpp)
+target_link_libraries(ow_tests PRIVATE ow_core)
+set_target_properties(ow_tests PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_compile_options(ow_tests PRIVATE /utf-8 /permissive- /W4)
+else()
+  target_compile_options(ow_tests PRIVATE -Wall -Wextra)
+endif()
+
+# ---------------------------------------------------------------------------
+# apps
+# ---------------------------------------------------------------------------
+add_executable(omniworld_loop apps/omniworld_loop.cpp)
+target_link_libraries(omniworld_loop PRIVATE ow_core)
+set_target_properties(omniworld_loop PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_compile_options(omniworld_loop PRIVATE /utf-8 /permissive- /W4)
+else()
+  target_compile_options(omniworld_loop PRIVATE -Wall -Wextra)
+endif()
+
+enable_testing()
+add_test(NAME runtime_probe_smoke COMMAND runtime_probe --json)
+add_test(NAME ow_slice01 COMMAND ow_tests slice01)
+add_test(NAME ow_slice02 COMMAND ow_tests slice02)
+add_test(NAME ow_slice03 COMMAND ow_tests slice03)
+add_test(NAME ow_slice04 COMMAND ow_tests slice04)
+add_test(NAME ow_slice05 COMMAND ow_tests slice05)
+add_test(NAME ow_slice06 COMMAND ow_tests slice06)
+add_test(NAME ow_slice07 COMMAND ow_tests slice07)
+add_test(NAME ow_slice08 COMMAND ow_tests slice08)
+add_test(NAME ow_slice09 COMMAND ow_tests slice09)
+add_test(NAME ow_slice10 COMMAND ow_tests slice10)
+add_test(NAME ow_slice11 COMMAND ow_tests slice11)
+add_test(NAME ow_slice12 COMMAND ow_tests slice12)
+add_test(NAME ow_slice15 COMMAND ow_tests slice15)
+add_test(NAME ow_slice16 COMMAND ow_tests slice16)
+add_test(NAME ow_slice17 COMMAND ow_tests slice17)
+add_test(NAME ow_slice18 COMMAND ow_tests slice18)
+add_test(NAME ow_slice19 COMMAND ow_tests slice19)
+
+# ---------------------------------------------------------------------------
+# Stage C: real-model adapters, only when OW_WITH_ONNXRUNTIME=ON. The source
+# file is single-file (adapter invariant); core modules never include ORT.
+# ---------------------------------------------------------------------------
+if(OW_WITH_ONNXRUNTIME)
+  target_sources(ow_core PRIVATE src/perception/rtdetr.cpp
+                                 src/perception/depth_anything.cpp)
+  target_include_directories(ow_core PRIVATE "${OW_ONNXRUNTIME_ROOT}/include")
+  target_link_libraries(ow_core PUBLIC "${OW_ONNXRUNTIME_ROOT}/lib/onnxruntime.lib")
+  target_compile_definitions(ow_core PRIVATE
+    OW_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/models")
+  # DLLs beside the executables so ctest and the app find them. ORT loads the
+  # execution-provider DLLs lazily: shipping only onnxruntime.dll makes
+  # --ep cuda fail on a missing onnxruntime_providers_shared.dll (measured
+  # 2026-10-19). CPU-only ORT packages carry none of the provider DLLs, so
+  # copy whatever exists in lib/.
+  file(GLOB OW_ORT_DLLS "${OW_ONNXRUNTIME_ROOT}/lib/*.dll")
+  foreach(tgt ow_tests omniworld_loop)
+    foreach(ort_dll ${OW_ORT_DLLS})
+      add_custom_command(TARGET ${tgt} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${ort_dll}" "$<TARGET_FILE_DIR:${tgt}>")
+    endforeach()
+  endforeach()
+  add_test(NAME ow_slice13 COMMAND ow_tests slice13)
+  add_test(NAME ow_slice14 COMMAND ow_tests slice14)
+endif()

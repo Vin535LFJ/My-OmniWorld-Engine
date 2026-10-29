@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Stage D slice D5, Gate 0 item G0-3: the one decodable video sample the NVDEC",
+    "path needs. The file is NOT in git (same rule as the COCO panel: script +",
+    "pinned manifest + SHA256 + license record are what land). Rebuild:",
+    "  node tools/fetch_video_sample.mjs"
+  ],
+  "purpose": "H.264/AAC MP4 for the --video frame source; also the B0/B1/Z comparison input",
+  "items": [
+    {
+      "path": "data/sample/sintel_trailer-480p.mp4",
+      "url": "https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4",
+      "bytes": 4372373,
+      "sha256": "b670602fa00934ca27c4351bb0efe7ea7a07fae57284e44226025eeed7c51254",
+      "container": "mp4",
+      "video_codec": "h264",
+      "license": "CC BY 3.0",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/",
+      "rights_holder": "Blender Foundation (Durian Open Movie project)",
+      "attribution": "Sintel — Open Movie. (c) copyright Blender Foundation | durian.blender.org, licensed CC BY 3.0",
+      "commercial_use": true,
+      "license_verified": "2026-10-27",
+      "verified_from": [
+        "https://en.wikipedia.org/wiki/Sintel (Creative Commons Attribution License)",
+        "https://commons.wikimedia.org/wiki/File:Sintel_trailer-1080p.ogv (CC BY 3.0)",
+        "directory listing of https://download.blender.org/durian/trailer/ (size match)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniWorld Engine — 数据流转图 / Data Flow</title>
+<meta name="description" content="一次 tick 里数据如何穿过 OmniWorld Engine 的契约：真值世界 → 观察 → 参与者 → Proposal → 裁决 → 信念账本 → 指标 → 运行工件。含实测延迟与阶段进度。">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --surface: #f7f8fa; --surface-2: #eef0f4; --fg: #16181d; --muted: #5b6472;
+    --border: #d6dae1; --border-soft: #e6e9ee; --accent: #2f6feb; --ok: #1a7f4b; --warn: #9a5b00; --bad: #b3261e;
+    --dot: #2f6feb;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --code: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#15171c; --surface:#1c1f26; --surface-2:#242832; --fg:#e6e8ec; --muted:#9aa4b2;
+            --border:#333845; --border-soft:#282d37; --accent:#6ea8fe; --ok:#4ec98a; --warn:#e0a54a; --bad:#f2726b; --dot:#6ea8fe; }
+  }
+  html[data-theme="light"] { --bg:#fff; --surface:#f7f8fa; --surface-2:#eef0f4; --fg:#16181d; --muted:#5b6472; --border:#d6dae1; --border-soft:#e6e9ee; --accent:#2f6feb; --ok:#1a7f4b; --warn:#9a5b00; --bad:#b3261e; --dot:#2f6feb; color-scheme: light; }
+  html[data-theme="dark"]  { --bg:#15171c; --surface:#1c1f26; --surface-2:#242832; --fg:#e6e8ec; --muted:#9aa4b2; --border:#333845; --border-soft:#282d37; --accent:#6ea8fe; --ok:#4ec98a; --warn:#e0a54a; --bad:#f2726b; --dot:#6ea8fe; color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.6; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 20px 64px; }
+  header.page { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--border-soft); padding-bottom: 14px; margin-bottom: 8px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  h2 { font-size: 15px; margin: 34px 0 12px; font-weight: 600; letter-spacing: .01em; }
+  .lede { color: var(--muted); font-size: 14px; margin: 0; }
+  .toolbar { display: flex; gap: 8px; }
+  button { font: inherit; cursor: pointer; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; min-height: 38px; }
+  button:hover { border-color: var(--accent); }
+  button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-2); font-weight: 600; }
+  .layout { display: grid; grid-template-columns: minmax(280px, 460px) 1fr; gap: 24px; align-items: start; margin-top: 18px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  svg { width: 100%; height: auto; display: block; }
+  .box { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+  .box.lit { stroke: var(--accent); fill: var(--surface-2); }
+  .title { font-size: 15px; font-weight: 600; fill: var(--fg); }
+  .sub { font-size: 11.5px; fill: var(--muted); font-family: var(--code); }
+  .edge { stroke: var(--border-soft); stroke-width: 1.5; }
+  .grp { fill: none; stroke: var(--border-soft); stroke-dasharray: 4 3; }
+  .chip { fill: var(--surface); stroke: var(--border-soft); }
+  .chip.lit { stroke: var(--accent); fill: var(--surface-2); }
+  .chip.dim { opacity: .35; }
+  .dot { fill: var(--dot); }
+  .panel { display: grid; gap: 14px; align-content: start; }
+  .field > span.lbl { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .cell { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+  .cell span { display: block; font-size: 11px; color: var(--muted); }
+  .cell strong { font-weight: 600; font-variant-numeric: tabular-nums; font-family: var(--code); font-size: 14px; }
+  .note { font-size: 13px; color: var(--muted); margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  caption { text-align: left; color: var(--muted); font-size: 13px; padding-bottom: 8px; }
+  th, td { border-bottom: 1px solid var(--border-soft); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  td.num { font-family: var(--code); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .badge { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 9px; border: 1px solid var(--border); color: var(--muted); }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  .bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  .stage { display: grid; grid-template-columns: minmax(120px, 200px) 1fr auto; gap: 12px; align-items: center; margin-bottom: 9px; font-size: 13.5px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: var(--code); font-size: .92em; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+  footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--border-soft); color: var(--muted); font-size: 12.5px; }
+  @media (prefers-reduced-motion: no-preference) { .box, .chip { transition: fill 120ms linear, stroke 120ms linear; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <div>
+    <h1>OmniWorld Engine — 一次 tick 的数据流转</h1>
+    <p class="lede">引擎本体是 <b>C++20 命令行程序，没有 GUI</b>。这张图讲的是：世界如何演化、被观察、被参与者提议、被裁决记账、被打分，最后落成一份可复现的 JSON 工件。</p>
+  </div>
+  <div class="toolbar">
+    <button id="theme" type="button" aria-label="切换明暗主题">主题：跟随系统</button>
+  </div>
+</header>
+
+<div class="layout">
+  <div>
+    <svg id="flow" viewBox="0 0 420 624" role="img" aria-label="数据流转图：真值世界、观察、参与者、Proposal、裁决、信念账本、指标、运行工件">
+      <g id="edges"></g><g id="nodes"></g>
+      <circle id="dot" class="dot" r="4.5" cx="-30" cy="-30" aria-hidden="true"></circle>
+    </svg>
+    <p class="note" style="margin-top:6px">脉冲走一遍 = 一个 tick。虚线框里亮起的 = 当前面板里真实参与的适配器。</p>
+  </div>
+
+  <div class="panel">
+    <div class="field"><span class="lbl">运行</span>
+      <div class="seg">
+        <button id="play" aria-pressed="true">暂停</button>
+        <button id="step" type="button">单步一 tick</button>
+      </div>
+    </div>
+    <div class="field"><span class="lbl">速度</span>
+      <div class="seg" id="speeds">
+        <button data-sp="0.5" aria-pressed="false">慢</button>
+        <button data-sp="1" aria-pressed="true">正常</button>
+        <button data-sp="2.5" aria-pressed="false">快</button>
+      </div>
+    </div>
+    <div class="field"><span class="lbl">参与者面板（耗时与条数均为实测）</span>
+      <div class="seg" id="panels">
+        <button data-p="cv" aria-pressed="true">内建 CV</button>
+        <button data-p="det" aria-pressed="false">+ 真实检测</button>
+        <button data-p="all" aria-pressed="false">+ 真实深度</button>
+      </div>
+    </div>
+    <div class="field"><span class="lbl">运行模式（ADR-0009）</span>
+      <div class="seg" id="modes">
+        <button data-m="ref" aria-pressed="true">参考 · 逐字节</button>
+        <button data-m="perf" aria-pressed="false">性能 · 容差</button>
+      </div>
+    </div>
+
+    <div class="grid" aria-live="polite">
+      <div class="cell"><span>tick</span><strong id="r-tick">0</strong></div>
+      <div class="cell"><span>账本新增 / tick</span><strong id="r-entries">16</strong></div>
+      <div class="cell"><span>感知耗时 / tick</span><strong id="r-perceive">0.12 ms</strong></div>
+      <div class="cell"><span>整轮速率</span><strong id="r-hz">38 094 Hz</strong></div>
+      <div class="cell"><span>适配器故障</span><strong id="r-faults">0</strong></div>
+      <div class="cell"><span>EP 路径</span><strong id="r-ep">CPU EP</strong></div>
+    </div>
+    <p class="note" id="r-note"></p>
+  </div>
+</div>
+
+<h2>这张图里每个环节是什么</h2>
+<table>
+  <caption>点击顺序即数据顺序。"不变式"一列是它对外承诺、且被测试钉住的东西。</caption>
+  <thead><tr><th>环节</th><th>职责</th><th>不变式 / 证据</th></tr></thead>
+  <tbody>
+    <tr><td><b>真值世界</b><br><code>truth_world</code></td><td>引擎独占作者权的种子确定性运动学世界，8 个实体在 y≡0 平面上常速运动。所有"信念"以它为评分基准。</td><td>同 seed 逐字节复现。600 ticks / seed 42 → <code>world_hash 574361e62eec92b9</code>，阶段 A 至今未变。</td></tr>
+    <tr><td><b>观察</b><br><code>observation</code></td><td>某 tick 的有界视图：RGB 帧 + 自带相机（位姿与分辨率）+ 每实体三态可见性。</td><td>分辨率是观察的属性而非全局常量（32/64/518/640 实测通过）；"未见" ≠ 空值 ≠ 零。</td></tr>
+    <tr><td><b>参与者</b><br><code>perception/*</code></td><td>4 个自注册适配器文件：2 个内建 CV 检测器、RT-DETRv2-S（真实检测）、DA-V2-Small（真实深度）；另有 2 个世界模型走同一接缝。</td><td>单文件接入、核心零分支；适配器只读观察、不得铸类别标签。</td></tr>
+    <tr><td><b>Proposal</b><br><code>core/proposal</code></td><td>非所有者唯一的写路径：谁 / 何时 / 哪个实体 / 主张什么 / 多确信。</td><td>契约⑦：置信度是 [0,1] 自报标量，<b>零裁决权力</b>，唯一消费者是校准指标。</td></tr>
+    <tr><td><b>裁决</b><br><code>adjudication</code></td><td>编排者独占的冲突消解：schema 校验 → 位置容差 0.1 关联真值 → Applied / Announced / Rejected。</td><td>并列按 id 序消解（确定性）；<code>NewEntity</code> 只是"宣布"，世界 id 只能由真值路径产生。</td></tr>
+    <tr><td><b>信念账本</b><br><code>belief/ledger</code></td><td>追加式存储，主张连同裁决一起留档。</td><td><b>错误是数据，永不覆盖。</b>600 ticks ≈ 9 746 条。</td></tr>
+    <tr><td><b>指标</b><br><code>metrics</code></td><td>divergence、ECE（按生产者分表）、身份稳定性。</td><td>聚合 ECE 会被产量最大的分量绑架，故分表是必需视角（problem-log 005）。</td></tr>
+    <tr><td><b>运行工件</b><br><code>loop/driver</code></td><td>确定性 JSON：config + 环境元数据 + 逐阶段 p50/p95 + 双哈希 + <code>first_fault</code>。</td><td>不含墙钟与随机；性能模式有参与者故障 → 非零退出码，但工件照常写出。</td></tr>
+  </tbody>
+</table>
+
+<h2>实测数字与出处</h2>
+<table>
+  <caption>延迟全部来自 Release 构建；参考模式数字在 OFF 与 ON 两种构建下字节一致。</caption>
+  <thead><tr><th>项</th><th>数值</th><th>条件</th><th>出处</th></tr></thead>
+  <tbody>
+    <tr><td>闭环速率（内建 CV 面板）</td><td class="num">38 094 Hz</td><td>Release · 600 ticks · 参考模式</td><td><a href="../benchmarks/regression/2026-10-14-stage-a-gate1-alignment.md">Gate-1 对齐报告</a></td></tr>
+    <tr><td>RT-DETRv2-S 单次 <code>observe()</code></td><td class="num">p50 518 ms</td><td>Release · CPU EP 单线程 · 640×640</td><td><a href="../benchmarks/regression/2026-10-19-stage-c-c3-rtdetrv2s.md">C3 报告 §5</a></td></tr>
+    <tr><td>DA-V2-Small 单次 <code>observe()</code></td><td class="num">p50 1 252 ms</td><td>Release · CPU EP 单线程 · 518×518</td><td><a href="../benchmarks/regression/2026-10-19-stage-c-c4-depth-anything.md">C4 报告 §6</a></td></tr>
+    <tr><td>两家族同面板</td><td class="num">1 908.8 ms / tick</td><td>Release · 深度 1 228 + 检测 619</td><td><a href="../benchmarks/regression/2026-10-19-stage-c-c4-depth-anything.md">C4 报告 §6</a></td></tr>
+    <tr><td>真实照片检测质量</td><td class="num">5 框 / max 0.950</td><td>640×480 照片；类别 remote·cat·cat·remote·sofa 逐一对上</td><td><a href="../benchmarks/regression/2026-10-19-stage-c-c3-rtdetrv2s.md">C3 报告 §3</a></td></tr>
+    <tr><td>判据 (c) 分离量</td><td class="num">0.18890 / 0.23165</td><td>诚实 vs 注入；真模型 vs 注入 —— 均 &lt; 0.30</td><td><a href="../benchmarks/regression/2026-10-19-stage-c-closeout.md">阶段 C 收口 §1</a></td></tr>
+    <tr><td>测试套件</td><td class="num">15 / 17</td><td>默认构建（ORT OFF）/ ON 构建</td><td><code>build.bat --test</code> · <code>ctest --test-dir build-ort*</code></td></tr>
+  </tbody>
+</table>
+
+<h2>阶段进度</h2>
+<div id="stages"></div>
+
+<h2>两条没兑现的（诚实记账）</h2>
+<table>
+  <thead><tr><th>状态</th><th>判据</th><th>卡在哪</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge warn">PARTIAL</span></td><td>性能模式延迟预算（GPU）</td><td>本机缺 cuDNN 9 / CUDA 12.8+ → CUDA EP 载入失败。所有延迟数字目前都是 CPU 单线程（且单线程是确定性要求，不是最快配置）。<a href="adr/0012-onnxruntime-optional-dependency.md">ADR-0012</a></td></tr>
+    <tr><td><span class="badge warn">PARTIAL</span></td><td>判据 (c) 指标判别力</td><td>真实模型进环后仍关不掉：本世界真值与 COCO 定义域不相交，真模型的 ECE 随面板漂移 0.24–0.49。关闭条件移交阶段 D。<a href="design/problem-log.md">problem-log 012</a></td></tr>
+    <tr><td><span class="badge bad">未开始</span></td><td>阶段 D（Phase 3 真实数据入环）</td><td>连 L1 概要设计都还没共创。目标：NVDEC 硬解 + 真实视频回放作为 Observation 源。</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  本页是纯静态单文件，可离线打开、可提交入库。数据截至 commit <code>43a360f</code>（2026-10-19，阶段 C 收口）。
+  数字若与 <a href="../benchmarks/regression/">benchmarks/regression/</a> 冲突，以后者为准——那里是性能主张的唯一证据源。
+  想看<b>由真实运行工件生成</b>的图表（延迟热力图、ECE、账本构成、确定性），打开 <a href="dashboard.html">dashboard.html</a>。
+</footer>
+</div>
+
+<script>
+(function () {
+  var NS = 'http://www.w3.org/2000/svg';
+  var edgesHost = document.getElementById('edges');
+  var nodesHost = document.getElementById('nodes');
+  var dot = document.getElementById('dot');
+
+  var CHAIN = [
+    { id: 'truth', t: '真值世界 TruthWorld', s: '唯一作者 · 8 实体 · y≡0', y: 14 },
+    { id: 'obs', t: '观察 Observation', s: 'RGB + 相机 + 三态可见性', y: 84 },
+    { id: 'adapters', group: true, y: 154 },
+    { id: 'proposal', t: 'Proposal 五元组', s: '谁 / 何时 / 哪个 / 主张 / 多确信', y: 272 },
+    { id: 'adj', t: '裁决 Adjudication', s: '容差 0.1 关联 · Applied / Announced / Rejected', y: 342 },
+    { id: 'ledger', t: '信念账本 Belief Ledger', s: '追加不覆盖 · 错误是数据', y: 412 },
+    { id: 'metrics', t: '指标 Metrics', s: 'divergence · ECE 分表 · 身份稳定性', y: 482 },
+    { id: 'report', t: 'RunReport JSON 工件', s: '环境元数据 + p50/p95 + first_fault', y: 552 }
+  ];
+  var H = 44, X = 40, W = 340, CX = 210;
+  var CHIPS = [
+    { id: 'blob', t: 'blob_detect ×2', x: 55, y: 172 },
+    { id: 'wm', t: '世界模型 ×2', x: 215, y: 172 },
+    { id: 'rtdetr', t: 'rtdetr_v2_s', x: 55, y: 212 },
+    { id: 'depth', t: 'depth_anything_v2_s', x: 215, y: 212 }
+  ];
+  var CW = 150, CHT = 32;
+
+  function el(tag, attrs) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function txt(s, cls, x, y) {
+    var t = el('text', { 'class': cls, x: x, y: y, 'text-anchor': 'middle' });
+    t.textContent = s; return t;
+  }
+
+  CHAIN.forEach(function (n) {
+    if (n.group) {
+      nodesHost.appendChild(el('rect', { 'class': 'grp', x: X, y: n.y, width: W, height: 100, rx: 8 }));
+      nodesHost.appendChild(txt('参与者 · 每个 = 一个自注册文件，核心零分支', 'sub', CX, n.y + 14));
+      CHIPS.forEach(function (c) {
+        var g = el('g', { id: 'g-' + c.id });
+        g.appendChild(el('rect', { 'class': 'chip', x: c.x, y: c.y, width: CW, height: CHT, rx: 6 }));
+        g.appendChild(txt(c.t, 'sub', c.x + CW / 2, c.y + 20));
+        nodesHost.appendChild(g);
+      });
+      return;
+    }
+    var g = el('g', { id: 'g-' + n.id });
+    g.appendChild(el('rect', { 'class': 'box', x: X, y: n.y, width: W, height: H, rx: 7 }));
+    g.appendChild(txt(n.t, 'title', CX, n.y + 19));
+    g.appendChild(txt(n.s, 'sub', CX, n.y + 34));
+    nodesHost.appendChild(g);
+  });
+
+  var EDGES = [];
+  for (var e = 0; e < CHAIN.length - 1; e++) {
+    var a = CHAIN[e], b = CHAIN[e + 1];
+    var y1 = a.y + (a.group ? 100 : H), y2 = b.y;
+    EDGES.push([CX, y1, CX, y2]);
+    edgesHost.appendChild(el('line', { 'class': 'edge', x1: CX, y1: y1, x2: CX, y2: y2 }));
+  }
+
+  var PANELS = {
+    cv:   { chips: ['blob', 'wm'], entries: '16', perceive: '0.12 ms', refHz: '38 094 Hz', perfHz: '38 094 Hz',
+            note: '内建 CV 面板零外部依赖；38 094 Hz 是 Release 600-tick 实测。' },
+    det:  { chips: ['blob', 'wm', 'rtdetr'], entries: '≈ 25', perceive: '518 ms', refHz: '1.9 Hz', perfHz: '待标定（缺 cuDNN）',
+            note: 'RT-DETRv2-S 单次 observe() 全程 p50 518 ms（Release · CPU EP 单线程 = 确定性优先，不是最快配置）。' },
+    all:  { chips: ['blob', 'wm', 'rtdetr', 'depth'], entries: '41', perceive: '1 909 ms', refHz: '0.5 Hz', perfHz: '待标定（缺 cuDNN）',
+            note: '两家族同面板：深度 1 228 ms + 检测 619 ms。同面板数字不与单独数字混引。' }
+  };
+
+  var STAGES = [
+    { n: '阶段 A 核心引擎重建', p: 100, s: '6/6 完成' },
+    { n: '阶段 B 双模式框架', p: 100, s: '5/5 完成' },
+    { n: '阶段 C AI 入环', p: 100, s: '5/5 完成（2026-10-19）' },
+    { n: '阶段 D 真实数据入环', p: 0, s: '未开始 · 待共创 L1' },
+    { n: 'Phase 4 世界模型 / 智能体', p: 0, s: '未开始' }
+  ];
+
+  var st = { panel: 'cv', mode: 'ref', speed: 1, playing: true, clock: 0, tick: 0 };
+  var out = {
+    tick: document.getElementById('r-tick'), entries: document.getElementById('r-entries'),
+    perceive: document.getElementById('r-perceive'), hz: document.getElementById('r-hz'),
+    faults: document.getElementById('r-faults'), ep: document.getElementById('r-ep'),
+    note: document.getElementById('r-note')
+  };
+
+  function setLit(id, on) {
+    var g = document.getElementById('g-' + id);
+    if (!g) return;
+    var r = g.querySelector('rect');
+    if (!r || r.getAttribute('class').indexOf('grp') >= 0) return;
+    var base = r.getAttribute('class').replace(/\s*\blit\b/, '');
+    r.setAttribute('class', base + (on ? ' lit' : ''));
+  }
+
+  function render() {
+    var p = PANELS[st.panel];
+    CHIPS.forEach(function (c) {
+      var g = document.getElementById('g-' + c.id);
+      var r = g.querySelector('rect');
+      r.setAttribute('class', 'chip' + (p.chips.indexOf(c.id) >= 0 ? ' lit' : ' dim'));
+    });
+    out.entries.textContent = p.entries;
+    out.perceive.textContent = p.perceive;
+    out.hz.textContent = st.mode === 'ref' ? p.refHz : p.perfHz;
+    out.ep.textContent = st.mode === 'ref' ? 'CPU EP' : 'CUDA EP ✗ 载入失败';
+    out.faults.textContent = st.mode === 'perf' && st.panel !== 'cv' ? '1' : '0';
+    out.note.textContent = (st.mode === 'perf' && st.panel !== 'cv'
+      ? '性能路径需要 cuDNN 9 / CUDA 12.8+，本机缺失 → CUDA EP 载入失败；现在这种失败会让进程以非零退出码报出，原因写进工件的 first_fault。' : '') + p.note;
+  }
+
+  var last = 0;
+  function frame(now) {
+    if (!last) last = now;
+    var dt = Math.min(64, now - last) / 1000;
+    last = now;
+    if (st.playing) {
+      st.clock += dt * st.speed * 1.6;
+      if (st.clock >= EDGES.length) { st.clock -= EDGES.length; st.tick++; out.tick.textContent = String(st.tick); }
+    }
+    var idx = Math.min(EDGES.length - 1, Math.floor(st.clock));
+    var frac = st.clock - Math.floor(st.clock);
+    var ed = EDGES[idx];
+    dot.setAttribute('cx', ed[0] + (ed[2] - ed[0]) * frac);
+    dot.setAttribute('cy', ed[1] + (ed[3] - ed[1]) * frac);
+    CHAIN.forEach(function (n, k) { setLit(n.id, k <= idx); });
+    if (st.playing) requestAnimationFrame(frame);
+  }
+
+  function group(hostId, attr, fn) {
+    var host = document.getElementById(hostId);
+    var btns = host.querySelectorAll('button[' + attr + ']');
+    Array.prototype.forEach.call(btns, function (b) {
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call(btns, function (o) { o.setAttribute('aria-pressed', 'false'); });
+        b.setAttribute('aria-pressed', 'true');
+        fn(b.getAttribute(attr));
+      });
+    });
+  }
+  group('speeds', 'data-sp', function (v) { st.speed = parseFloat(v); });
+  group('panels', 'data-p', function (v) { st.panel = v; render(); });
+  group('modes', 'data-m', function (v) { st.mode = v; render(); });
+
+  var play = document.getElementById('play');
+  play.addEventListener('click', function () {
+    st.playing = !st.playing;
+    play.textContent = st.playing ? '暂停' : '播放';
+    play.setAttribute('aria-pressed', st.playing ? 'true' : 'false');
+    if (st.playing) { last = 0; requestAnimationFrame(frame); }
+  });
+  document.getElementById('step').addEventListener('click', function () {
+    st.playing = false; play.textContent = '播放'; play.setAttribute('aria-pressed', 'false');
+    st.tick++; out.tick.textContent = String(st.tick);
+    CHAIN.forEach(function (n) { setLit(n.id, true); });
+    dot.setAttribute('cx', CX); dot.setAttribute('cy', CHAIN[CHAIN.length - 1].y);
+  });
+
+  var themeBtn = document.getElementById('theme');
+  var THEMES = ['auto', 'light', 'dark'];
+  var LABEL = { auto: '主题：跟随系统', light: '主题：浅色', dark: '主题：深色' };
+  themeBtn.addEventListener('click', function () {
+    var next = THEMES[(THEMES.indexOf(document.documentElement.getAttribute('data-theme')) + 1) % THEMES.length];
+    document.documentElement.setAttribute('data-theme', next);
+    themeBtn.textContent = LABEL[next];
+  });
+
+  var host = document.getElementById('stages');
+  STAGES.forEach(function (s) {
+    var row = document.createElement('div');
+    row.className = 'stage';
+    row.innerHTML = '<span>' + s.n + '</span><span class="bar"><i style="width:' + s.p + '%"></i></span><span class="badge ' +
+      (s.p === 100 ? 'ok' : (s.p === 0 ? 'bad' : 'warn')) + '">' + s.s + '</span>';
+    host.appendChild(row);
+  });
+
+  render();
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    st.playing = false; play.textContent = '播放'; play.setAttribute('aria-pressed', 'false');
+    CHAIN.forEach(function (n) { setLit(n.id, true); });
+  } else {
+    requestAnimationFrame(frame);
+  }
+})();
+</script>
+</body>
+</html>
