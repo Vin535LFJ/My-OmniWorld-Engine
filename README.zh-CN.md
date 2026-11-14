@@ -2,7 +2,7 @@
 
 [中文说明 / Chinese README](README.zh-CN.md)
 
-**OmniWorld 是一个 GPU 原生世界引擎（C++20）：让世界数据——视频解码、AI 推理、观测渲染、世界状态更新——以最少实际拷贝、最少同步、最低延迟穿过 GPU 系统。** 感知模型、世界模型、仿真器、渲染器、智能体共享同一个可测量的"活世界状态"（identity / time / ownership / confidence 契约）；评测 harness 是引擎的第一个应用（ADR-0008）。
+**OmniWorld 是一个可测量的世界状态运行时（C++20）：canonical 世界状态 + World Contract（identity / time / ownership / confidence），任何世界生产者——感知模型、生成式世界模型、程序化生成器、重建模型、物理仿真器、渲染器、智能体——经同一契约接入，引擎负责身份/时间/所有权/置信度与正确性测量（逐 tick 在环评分、位级可复现 episode）。** 它是"基准之下的运行时"（ADR-0016）；工程属性仍是 GPU 原生数据流纪律（ADR-0008）：让世界数据以最少实际拷贝、最少同步、最低延迟穿过 GPU 系统。评测 harness 是引擎的第一个应用。
 
 ## 文档地图（从哪看起）
 

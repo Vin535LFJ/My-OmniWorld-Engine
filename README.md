@@ -2,7 +2,7 @@
 
 [中文说明 / Chinese README](README.zh-CN.md)
 
-**OmniWorld is a GPU-native world engine (C++20): moving video decode, AI inference, observation rendering, and world-state updates through GPU systems with the least practical copies, synchronization, and latency.** Perception models, world models, simulators, renderers, and agents all share one measurable "living world state" (identity / time / ownership / confidence contract). The evaluation harness is the engine's first application (ADR-0008).
+**OmniWorld is a measurable world-state runtime (C++20): one canonical world state + World Contract (identity / time / ownership / confidence), where any world producer — perception models, generative world models, procedural generators, reconstruction models, physics simulators, renderers, agents — plugs in through the same contract, and the engine owns identity, time, ownership, confidence, and correctness measurement (per-tick in-loop scoring, byte-reproducible episodes).** It is "the runtime beneath the benchmarks" (ADR-0016). Its engineering discipline stays GPU-native (ADR-0008): moving video decode, AI inference, observation rendering, and world-state updates through GPU systems with the least practical copies, synchronization, and latency. The evaluation harness is the engine's first application.
 
 ## Document map (where to start)
 
