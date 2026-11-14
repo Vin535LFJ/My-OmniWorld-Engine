@@ -12,6 +12,8 @@
 | [ADR-0011](0011-contract-rear-mirror-delta-review.md) | 契约后视镜 delta 审查：4 重合 / 3 收紧 / 5 缺口处置；L0 §2 定稿冻结 | 2026-10-12 |
 | [ADR-0012](0012-onnxruntime-optional-dependency.md) | ONNX Runtime 作为可选依赖：默认 OFF 是参考模式的构建级证明（阶段 C L1 裁决的正式记录，C3 首次链接时补记） | 2026-10-19 |
 | [ADR-0013](0013-scoring-space.md) | 评分空间：世界坐标之外新增观察归一化坐标（加法式扩展；真实视频没有世界坐标，判据 (c) 的关闭路径） | 2026-10-19 |
+| [ADR-0016](0016-direction-v2-world-state-runtime.md) | 方向重定义 v2：可测量的世界状态运行时（四层逻辑分层、六方向座位、首战 B' 五判据、L2 治理、智驾①+③条件解封、动画现状确认、术语；owner grill 终裁） | 2026-11-14 |
+| [ADR-0017](0017-worldfoundry-differential.md) | WorldFoundry 差分：运行时层定位与贡献期权（**Accepted**，Option C 双轨 + 探针止损；与 0016 合并评审） | 2026-11-13 草案 / 11-14 Accepted |
 
 ## 既有决策记录索引（在别处，勿重复搬运）
 
